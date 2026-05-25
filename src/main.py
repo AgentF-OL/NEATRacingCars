@@ -1,8 +1,3 @@
-import numpy
-import pygame
-import math
-import time
-import random
 import sys
 
 from game import *
