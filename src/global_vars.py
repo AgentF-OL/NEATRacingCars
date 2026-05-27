@@ -1,25 +1,25 @@
 from utils import *
 
 # The grass background resized 2.5x
-GRASS = scale_image(pygame.image.load("imgs/grass.jpg"), 2.5)
+GRASS = scale_image(pygame.image.load("../imgs/grass.jpg"), 2.5)
 # The track image resized 0.9x
-TRACK = scale_image(pygame.image.load("imgs/track.png"), 0.9)
+TRACK = scale_image(pygame.image.load("../imgs/track.png"), 0.9)
 
-TRACK_MASK = scale_image(pygame.image.load("imgs/track-mask.png"), 0.9)
+TRACK_MASK = scale_image(pygame.image.load("../imgs/track-mask.png"), 0.9)
 
 # The track border image for collision detection resized 0.9x
-TRACK_BORDER = scale_image(pygame.image.load("imgs/track-border.png"), 0.9)
+TRACK_BORDER = scale_image(pygame.image.load("../imgs/track-border.png"), 0.9)
 TRACK_BORDER_MASK=pygame.mask.from_surface(TRACK_BORDER)
 
 # The finish image intact
-FINISH = pygame.image.load("imgs/finish.png")
+FINISH = pygame.image.load("../imgs/finish.png")
 FINISH_MASK=pygame.mask.from_surface(FINISH)
 
 # Import car images resized 0.55x
-RED_CAR = scale_image(pygame.image.load("imgs/red-car.png"), 0.55)
-GREEN_CAR = scale_image(pygame.image.load("imgs/green-car.png"), 0.55)
-GREY_CAR = scale_image(pygame.image.load("imgs/grey-car.png"), 0.55)
-PURPLE_CAR = scale_image(pygame.image.load("imgs/purple-car.png"), 0.55)
+RED_CAR = scale_image(pygame.image.load("../imgs/red-car.png"), 0.55)
+GREEN_CAR = scale_image(pygame.image.load("../imgs/green-car.png"), 0.55)
+GREY_CAR = scale_image(pygame.image.load("../imgs/grey-car.png"), 0.55)
+PURPLE_CAR = scale_image(pygame.image.load("../imgs/purple-car.png"), 0.55)
 
 car_width,car_height=GREEN_CAR.get_size()
 ### Half car-width and half car-height
