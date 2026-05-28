@@ -33,7 +33,7 @@ def _signed_angle_to_wp(car):
     Positive → waypoint is to the LEFT.   Negative → to the RIGHT.
     Returns 0 if no path.
     """
-    if not car.path or car.current_point >= len(car.path):
+    if not car.path:
         return 0.0
     # car heading unit vector (pygame: y grows downward, angle=0 is north)
     rad = math.radians(car.angle)
@@ -51,7 +51,7 @@ def _signed_angle_to_wp(car):
 
 
 def _dist_to_wp(car):
-    if not car.path or car.current_point >= len(car.path):
+    if not car.path:
         return 0.0
     tx, ty = car.path[car.current_point]
     return math.hypot(tx - car.x, ty - car.y)
@@ -86,8 +86,8 @@ REACH_RADIUS   = 40     # px — close enough to "touch" a waypoint
 TIGHT_CURVE    = 45.0   # ° — start slowing
 SHARP_CURVE    = 80.0   # ° — brake hard
 BRAKE_HORIZON  = 120    # px — how far ahead to look for curves
-CRUISE_SPEED   = 2.5    # px/frame — comfortable corner speed
-SLOW_SPEED     = 1.8    # px/frame — minimum when braking
+CRUISE_SPEED   = 3.6  # px/frame — comfortable corner speed
+SLOW_SPEED     = 2.5    # px/frame — minimum when braking
 MAX_VEL        = 4
 
 
@@ -190,8 +190,6 @@ class DTGreenCar(DTCar,ComputerCar):
         self.vel           = 0
 
     def step(self, verbose=False):
-        if self.current_point >= len(self.path):
-            return  # finished path
         
         sensor_data = build_sensors(self)
         action = self.DT.decide(sensor_data)
@@ -233,7 +231,8 @@ class DTGreenCar(DTCar,ComputerCar):
         """Move to next waypoint, but don't steer yet — let next frame handle it."""
         self.current_point += 1
         if self.current_point >= len(self.path):
-            self.vel = 0  # stop at end
+            if self.current_point >= len(self.path):
+                self.current_point = 0
             return
         # Gentle acceleration out of waypoint, don't snap to max
         self.vel = min(self.vel + self.acceleration, self.max_vel * 0.7)
