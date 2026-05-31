@@ -2,26 +2,17 @@ import time
 
 from global_vars import *
 
-def handle_collision(computer_car, computer_car2,game_info):
-    computer_finish_poi_collide = computer_car.collide(
-        FINISH_MASK, *FINISH_POSITION)
-    if computer_finish_poi_collide != None:
-        blit_text_center(WIN,MAIN_FONT,"YOU LOST!")
-        pygame.display.update()
-        pygame.time.wait(5000)
-        game_info.reset()
-        computer_car.next_level(1)
-        return True
-
-    computer_finish_poi_collide = computer_car2.collide(
-        FINISH_MASK, *FINISH_POSITION)
-    if computer_finish_poi_collide != None:
-        blit_text_center(WIN,MAIN_FONT,"YOU LOST!")
-        pygame.display.update()
-        pygame.time.wait(5000)
-        game_info.reset()
-        computer_car2.next_level(1)
-        return True
+def handle_collision(red_car, green_car, game_info):
+    for (car, name) in [(red_car, "RED"), (green_car, "GREEN")]:
+        finish_poi_collide = car.collide(FINISH_MASK, *FINISH_POSITION)
+        if finish_poi_collide != None:
+            blit_text_center(WIN,MAIN_FONT,f"{name} CAR WINS!")
+            pygame.display.update()
+            pygame.time.wait(5000)
+            game_info.reset()
+            red_car.next_level(1)
+            green_car.next_level(1)
+            return True
     return False
 
 

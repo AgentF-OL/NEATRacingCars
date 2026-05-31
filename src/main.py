@@ -40,7 +40,7 @@ while run:
     green_car.step(verbose=True)
     purple_car.step(verbose=True)
     
-    if handle_collision(green_car, purple_car,game_info):
+    if handle_collision(purple_car, green_car, game_info):
         draw(WIN,images,green_car,purple_car,game_info)
     
     if game_info.game_finished():
@@ -48,6 +48,6 @@ while run:
         pygame.time.wait(5000)
         game_info.reset()
         green_car.reset()
-        purple_car.next_level(1)
+        purple_car.reset()
 
 pygame.quit()
