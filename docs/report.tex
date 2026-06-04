@@ -7,14 +7,17 @@
 \usepackage{xcolor}
 \usepackage{graphicx}
 \usepackage{hyperref}
-\usepackage{listingsutf8}
 \usepackage{listings}
 \usepackage{color}
 \usepackage{amssymb}
 \usepackage{enumitem}
-\usepackage{mathpartir}
+\usepackage{booktabs}
 \usepackage{cleveref}
 \usepackage{xspace}
+\usepackage[most]{tcolorbox}
+\usepackage{environ}
+\usepackage{changepage}
+\usepackage[thmmarks]{ntheorem}
 
 \usepackage[most]{tcolorbox}
 \usepackage{environ}
@@ -62,13 +65,97 @@
 \section{Introduction}
 \label{sec:introduction}
 
-A very good introduction!
+This project applies \textbf{NeuroEvolution of Augmenting Topologies} (NEAT) to the
+Racing Cars game built with \texttt{pygame}.
+The goal is to evolve neural network controllers that drive an autonomous car around a
+closed circuit as fast as possible, staying within the track boundaries throughout.
+
+NEAT, introduced by Stanley and Miikkulainen (2002), simultaneously evolves the weights
+\emph{and} the topology of a neural network, starting from a minimal direct connection
+between inputs and outputs.
+Structural complexity is added incrementally through mutations that insert new nodes or
+connections, and speciation protects structural innovations from being eliminated before
+they have time to optimise.
+This makes NEAT well suited to continuous control problems such as racing, where the
+optimal network size is unknown in advance.
+
+Two complementary control strategies are investigated:
+
+\begin{itemize}
+    \item \textbf{Waypoints car} --- the network receives geometric information about
+    the next waypoint on a pre-defined route and outputs continuous steering and
+    throttle commands.
+    \item \textbf{Radar car} --- the network receives distances measured by a set of
+    forward-facing radar beams and outputs the same two commands, with no prior
+    knowledge of the track layout.
+\end{itemize}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Controller Inputs %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Controller Inputs}
 \label{sec:controller-inputs}
 
-Remarkable controller inputs!
+The waypoints car receives a vector of five normalised real-valued inputs at every
+simulation frame (60 Hz):
+
+\begin{center}
+\begin{tabular}{clll}
+\toprule
+\textbf{Index} & \textbf{Name} & \textbf{Formula / source} & \textbf{Range} \\ \midrule
+0 & Distance to waypoint      & $\min(d / 600,\; 1)$         & $[0,1]$   \\
+1 & Signed angle to waypoint  & $\alpha / 180$                & $[-1,1]$  \\
+2 & Current curve sharpness   & $\kappa / 180$                & $[0,1]$   \\
+3 & Next curve sharpness      & $\kappa_{\text{next}} / 180$  & $[0,1]$   \\
+4 & Normalised speed          & $v / v_{\max}$                & $[-0.5,1]$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Distance to waypoint.}
+The Euclidean distance from the car's centre to the centre of the current waypoint,
+clipped and scaled so that distances beyond 600 px map to 1.0.
+
+\paragraph{Signed angle to waypoint.}
+The signed angular deviation between the car's heading vector and the direction to the
+current waypoint, expressed in units of 180°.
+A positive value indicates the waypoint lies to the left; negative to the right.
+This is computed using the cross product of the heading unit vector and the
+waypoint direction vector.
+Because pygame uses a y-down coordinate system, the raw cross-product sign is
+flipped relative to screen geometry; the implementation corrects for this by
+inverting the sign test so that the returned angle matches the visual left/right
+perception.
+
+\paragraph{Curve sharpness.}
+The exterior angle (in degrees) formed by the path segments at the current and next
+waypoints, respectively.
+A value of 0° corresponds to a straight segment; 180° to a U-turn.
+By providing both the current and next sharpness values the network can anticipate
+upcoming turns and brake proactively.
+
+\paragraph{Normalised speed.}
+The car's current velocity divided by its maximum velocity (4 px/frame), giving a
+value in $[-0.5, 1]$ since the car can reverse at up to half speed.
+
+\paragraph{Sensor and actuator noise.}
+Two utility functions in \texttt{noise\_utils.py} add Gaussian perturbations to
+simulate real-world uncertainty:
+\begin{itemize}
+    \item \textbf{Sensor noise:} $\tilde{s} = s + \mathcal{N}(0,\; 0.03)$,
+          applied to every input before it reaches the network.
+          Values are \emph{not} clipped, allowing the network to receive
+          out-of-range readings just as a real sensor might drift.
+    \item \textbf{Actuator noise:} $\tilde{a} = \text{clip}(a + \mathcal{N}(0,\; 0.05),\;
+          -1, 1)$, applied to the steering and throttle outputs before they
+          update the car's state.
+\end{itemize}
+
+An early bug in \texttt{add\_sensor\_noise} clipped all sensor values to $[0,1]$,
+which destroyed the signed angle input (range $[-1,1]$): any left-of-waypoint
+reading was clamped to $0.0$, making the network blind to left turns.
+This caused the population to collapse to ``go straight'' behaviour from
+generation~5 onward.
+Removing the clip and correcting the cross-product sign in
+\texttt{\_signed\_angle\_to\_target} (see above) restored stable learning.
 
 %-------------------------------- Waypoints Car Inputs ------------------------------%
 \subsection{Waypoints Car Inputs}
@@ -126,19 +213,274 @@ Analysis right on point!
 \subsubsection{Experiments}
 \label{subsubsec:waypoints-experiments}
 
-So much experience!
+The waypoints controller was developed through several iterations of parameter tuning,
+documented in the code comments of \texttt{neat\_car\_base.py}.
+The final values reflect lessons learned from early failures.
+
+\paragraph{Early generation extinction.}
+Initial kill conditions were far more aggressive: 30 consecutive off-track frames,
+a 10-frame grace period at spawn, and a waypoint-stuck timer of 600 frames.
+Together with a circular-motion detector that killed any car whose position stayed
+within 25 px of a previously visited position for 90 frames, most generation-0
+cars died within a second.
+Because all cars scored near-zero fitness, there was no usable selection gradient and
+the population stagnated.
+
+\paragraph{Relaxed kill conditions and shortcut exploit.}
+Kill thresholds were progressively relaxed to the current values
+(90 consecutive off-track frames, 30-frame grace period, 900-frame stuck timer,
+tighter circular detector at 20 px radius applied over 120 frames).
+This allowed generation-0 cars to survive long enough to produce a fitness signal.
+
+However, an exploit emerged: the start position $(180, 200)$ and finish line
+$(130, 250)$ are only $\approx$64 px apart, so a car could drive a tight circle
+from spawn directly over the finish line and collect the full finish bonus without
+visiting any waypoints.
+The root cause was that \texttt{\_check\_finish\_line()} originally required no
+waypoint progress.
+
+\paragraph{Finish-line gate (final working behaviour).}
+The exploit was closed by modifying \texttt{\_check\_finish\_line()} to return
+\texttt{False} unless at least 85\% of the waypoints have been visited.
+With this change the shortcut is effectively worthless, and cars must traverse the
+full circuit to receive a meaningful finish bonus.
 
 %------------------------------------ Parameters ------------------------------------%
 \subsubsection{Parameters}
 \label{subsubsec:waypoints-parameters}
 
-Very well-chosen parameters!
+\paragraph{NEAT configuration.}
+The following values were used in the final training run
+(\texttt{config/neat\_waypoints.cfg}):
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\ \midrule
+Population size                   & 100            \\
+Fitness criterion                 & max            \\
+Fitness threshold                 & 100\,000       \\
+No fitness termination            & False          \\
+Reset on extinction               & 0              \\
+Initial connection                & full           \\
+Feed forward                      & True           \\
+Number of inputs                  & 5              \\
+Number of outputs                 & 2              \\
+Number of hidden nodes (initial)  & 0              \\
+Activation default                & tanh           \\
+Activation mutate rate            & 0.05           \\
+Activation options                & tanh, sigmoid, relu \\
+\midrule
+Weight init mean / stdev          & 0.0 / 1.0      \\
+Weight mutate power               & 0.4            \\
+Weight mutate rate                & 0.8            \\
+Bias mutate rate                  & 0.7            \\
+\midrule
+Connection add probability        & 0.25           \\
+Connection delete probability     & 0.30           \\
+Node add probability              & 0.10           \\
+Node delete probability           & 0.15           \\
+\midrule
+Compatibility threshold           & 3.0            \\
+Max stagnation                    & 25             \\
+Species elitism                   & 2              \\
+Elitism (per species)             & 2              \\
+Survival threshold                & 0.2            \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+NEAT was started from a fully connected minimal topology (5 inputs $\rightarrow$
+2 outputs, no hidden layers) and topology was allowed to grow through connection and
+node add mutations.
+The population of 100 was chosen as a balance between diversity and training speed.
+
+\paragraph{Car dynamics.}
+The physical parameters of the car were fixed across all experiments:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\ \midrule
+Maximum velocity          & 4.0 px/frame  \\
+Maximum reverse velocity  & 2.0 px/frame  \\
+Rotation velocity         & 4.0 °/frame   \\
+Acceleration gain         & 1.0           \\
+Friction coefficient      & 0.94 (per frame when throttle $< 0.05$) \\
+Steering gain             & $2.5 \times$ rotation velocity \\
+\midrule
+Off-track kill threshold  & 90 consecutive frames \\
+Grace period at spawn     & 30 frames      \\
+Waypoint stuck threshold  & 900 frames     \\
+Circular motion detector  & 120-frame window, 20 px radius \\
+Waypoint reach radius     & 40 px          \\
+Finish gate               & $\geq 85\%$ of waypoints visited \\
+\midrule
+Sensor noise $\sigma$     & 0.03           \\
+Actuator noise $\sigma$   & 0.05           \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 %------------------------------- Controller Performance -----------------------------%
 \subsubsection{Controller Performance}
 \label{subsubsec:waypoints-controller-performance}
 
-Very controlled performance indeed!
+The final waypoints controller was trained with the command:
+\texttt{python src/train\_unified.py --strategy waypoints --generations 100}.
+
+\paragraph{Training progression.}
+Fitness data was logged to \texttt{results/waypoints/logs/generations.csv}.
+The best fitness improved from 1\,344.53 in generation~0 to
+12\,188.70 by generation~46, after which it plateaued in the
+12\,150--12\,190 band for the remainder of the run
+(Figure~\ref{fig:fitness}).
+The average fitness followed a noisier trajectory, peaking at
+3\,493.43 in generation~46 and ending at 2\,005.19 in generation~99.
+The high variance in average fitness (final standard deviation 3\,154.38)
+reflects the active mutation pressure: new structural mutations often
+perform poorly before speciation and elitism refine them.
+
+\paragraph{Network complexity.}
+Topology augmentation was active but conservative.
+The best genome's node count grew from the initial 2 (the output nodes)
+to a maximum of 4, and connection counts ranged from 1 to 10
+(Figure~\ref{fig:complexity}).
+The best genomes at the end of the run typically contained 2--4 hidden
+nodes and 3--8 connections, confirming that NEAT found a compact solution
+for this control task.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{fitness_detailed.pdf}
+    \caption{Waypoint NEAT fitness evolution over 100 generations.
+    Best fitness (blue) plateaus around 12\,150 from generation~17 onward.
+    Average fitness (red dashed) and its $\pm$1 standard-deviation band
+    show the population's exploratory variance.}
+    \label{fig:fitness}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{complexity.pdf}
+    \caption{Network complexity of the best genome per generation.
+    The topology grows modestly from 2 nodes / 10 connections to
+    4 nodes / 6 connections, indicating that the control policy does
+    not require deep hierarchical processing.}
+    \label{fig:complexity}
+\end{figure}
+
+\paragraph{Observed behaviour.}
+The car accelerates from the start position, turns north toward the
+first waypoint, and follows the clockwise circuit.
+It brakes noticeably on sharp curves (particularly the tight hairpin
+at the bottom of the track) and accelerates again on the subsequent
+straights.
+The control is smooth rather than oscillatory: the network has learned
+to apply continuous moderate steering corrections rather than sharp
+alternating turns.
+
+\paragraph{Robustness statistics (30 trials).}
+The best-ever genome (key 4464, generation 46, training fitness
+8 641.87) was evaluated over 30 independent demo trials using
+\texttt{demo\_winner.py --final --trials 30}.
+Each trial used the same starting position but independent noise
+realisations, so outcome variance reflects genuine noise sensitivity.
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Metric} & \textbf{Value} \\ \midrule
+Total trials                & 30 \\
+Valid finishes (0 off-track)& 10 (33.3\%) \\
+Dirty finishes (some off-track) & 20 (66.7\%) \\
+Died before end             & 0 (0.0\%) \\
+Mean finish time (frames)   & 907 \\
+Min finish time             & 904 \\
+Max finish time             & 910 \\
+Mean off-track frames (finishers) & 4.7 \\
+Min off-track frames        & 0 \\
+Max off-track frames        & 20 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All 30 trials reached the finish line, demonstrating that the controller
+is highly reliable at completing the circuit.
+The majority of runs (66.7\%) incurred brief off-track contact,
+typically 1--9 frames, with a few outliers reaching 20 frames.
+This suggests the car drives close to the edge on sharp curves,
+occasionally clipping the border without accumulating the 90 consecutive
+off-track frames required to die.
+A clean zero-off-track finish occurred in 33.3\% of trials.
+Finish times are tightly clustered (904--910 frames, $\approx$15.1--15.2 s),
+indicating consistent speed.
+
+\paragraph{Reverse-direction generalisation.}
+A zero-shot generalisation test was performed by evaluating the winner
+on the reversed waypoint path (\texttt{PATH[::-1]}) without retraining.
+The car successfully completed the counter-clockwise circuit,
+reaching all 22 waypoints and crossing the finish line in 917 frames.
+This indicates that the controller has learned a robust geometric
+policy rather than simply memorising the clockwise waypoint sequence.
+
+%-------------------------------- Different Races -----------------------------------%
+\subsubsection{Different Race Configurations}
+\label{subsubsec:different-races}
+
+\paragraph{Reverse direction.}
+The reversed-circuit test described above constitutes the primary
+different-race experiment.
+Because the waypoints car receives absolute waypoint coordinates,
+one might expect it to fail on the reversed path without retraining.
+Instead, the car finished successfully, suggesting that the network
+learned to interpret relative geometric cues (distance, angle,
+curve sharpness) rather than memorising a fixed sequence of
+$(x,y)$ coordinates.
+
+\paragraph{Different finish-line positions.}
+%-------------------------------- Different Races -----------------------------------%
+\subsubsection{Different Race Configurations}
+\label{subsubsec:different-races}
+
+To test whether the controller generalises beyond the waypoint layout it was trained
+on, a second track configuration was defined with \texttt{setup\_track.py}:
+32 waypoints tracing a modified racing line, finish-line centre at $(498, 482)$ with
+a $90°$ rotation, and car spawn at $(525, 477)$ heading $112.5°$.
+The winning genome from the primary 100-generation run was evaluated on this new
+layout without any retraining.
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Metric} & \textbf{Value} \\ \midrule
+Total trials                        & 30 \\
+Valid finishes (0 off-track)        & 0 \hspace{1em}(0.0\%) \\
+Dirty finishes (some off-track)     & 30 (100.0\%) \\
+Died before end                     & 0 \hspace{1em}(0.0\%) \\
+Mean finish time (frames)           & 1\,020 \\
+Min / Max finish time               & 924 / 1\,858 \\
+Mean off-track frames (finishers)   & 23.8 \\
+Min / Max off-track frames          & 13 / 61 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The car completed the circuit in every trial, confirming it was not simply
+memorising the original waypoint coordinates.
+However, no trial was clean: every run incurred between 13 and 61 off-track frames,
+compared to 0--20 on the training layout.
+Three anomalous trials (8, 15, 16) registered approximately $1\,850$ frames and
+$wp = 63/32$ --- roughly double the expected values --- indicating the car completed
+an additional full lap before crossing the finish line on those runs.
+The higher off-track contact on the new layout is expected: the controller was
+optimised for the curvature profile of the 22-waypoint training path, and the
+new path introduces sharper or differently-spaced curves that push the car closer
+to the border.
+These results suggest the learned policy captures genuine geometric cues
+(distance and angle to waypoint, curve sharpness) rather than a memorised sequence,
+though fine-tuned boundary-hugging behaviour does not transfer perfectly to an
+unseen layout.
 
 %%%%%%%%%%%%%%%------------------ Radars Car Analysis -----------------%%%%%%%%%%%%%%%
 \subsection{Radars Car Analysis}
@@ -221,10 +563,27 @@ After the testing is over, the pruned and unpruned winner neural network can be 
 
 During the true race, the current velocity, acceleration, angle and fitness of the radar car can be seen in the \texttt{pygame} UI.
 
+
+
 %%%%%%%%%%%%%%%------------ Performance Comparison of the Cars --------%%%%%%%%%%%%%%%
 \subsection{Performance Comparison of the Cars}
 \label{subsec:performance-comparison}
 
-What a performance!
+A direct quantitative comparison between the two strategies is not trivial:
+Iy reality , the two approaches represent different points on a
+\emph{knowledge vs.\ adaptability} trade-off:
+
+\begin{itemize}
+    \item The \textbf{waypoints car} has access to rich, task-specific information
+    (distance, heading error, curve geometry) that makes the learning problem
+    considerably easier.
+    Fitness improves quickly and the required network is small.
+    The controller is, however, tied to the specific waypoint layout: it will fail
+    on a different track or reversed direction without re-training.
+    \item The \textbf{radar car} must infer track geometry from raw distance readings,
+    which is a harder credit-assignment problem and likely requires more generations.
+    In exchange, the resulting controller generalises better to unseen track segments
+    because it responds to local geometry rather than memorised waypoint coordinates.
+\end{itemize}
 
 \end{document}
