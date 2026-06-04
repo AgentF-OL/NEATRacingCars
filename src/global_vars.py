@@ -73,3 +73,62 @@ def draw(win,images,player_car,computer_car,game_info):
     player_car.draw(win)
     computer_car.draw(win)
     pygame.display.update()
+
+# ═════════════════════════════════════════════════════════════════
+#  Track config auto-loader (must be at the BOTTOM of global_vars)
+# ═════════════════════════════════════════════════════════════════
+import json, os  # noqa: E402
+
+# Keep originals so we can rotate later
+FINISH_ORIGINAL = FINISH
+FINISH_MASK_ORIGINAL = FINISH_MASK
+CUSTOM_START_POS = None
+CUSTOM_START_ANGLE = 0.0
+CUSTOM_FINISH_ANGLE = 0.0
+
+
+def _load_track_config():
+    global FINISH, FINISH_MASK, FINISH_POSITION, PATH
+    global CUSTOM_START_POS, CUSTOM_START_ANGLE, CUSTOM_FINISH_ANGLE
+
+    cfg_path = "track_config.json"
+    if not os.path.exists(cfg_path):
+        return
+
+    try:
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+
+        # ── Finish line (center-based, rotate if needed) ──
+        cx, cy = cfg.get("finish_position", (FINISH_POSITION[0], FINISH_POSITION[1]))
+        finish_angle = cfg.get("finish_angle", 0.0)
+        CUSTOM_FINISH_ANGLE = finish_angle
+
+        if finish_angle != 0:
+            FINISH = pygame.transform.rotate(FINISH_ORIGINAL, finish_angle)
+            FINISH_MASK = pygame.mask.from_surface(FINISH)
+        else:
+            FINISH = FINISH_ORIGINAL
+            FINISH_MASK = FINISH_MASK_ORIGINAL
+
+        # FINISH_POSITION is kept as top-left for game compatibility
+        FINISH_POSITION = (
+            int(cx - FINISH.get_width() // 2),
+            int(cy - FINISH.get_height() // 2)
+        )
+
+        # ── Waypoints ──
+        PATH[:] = [tuple(p) for p in cfg.get("waypoints", list(PATH))]
+
+        # ── Car start ──
+        CUSTOM_START_POS = tuple(cfg.get("car_start", (180, 200)))
+        CUSTOM_START_ANGLE = cfg.get("car_angle", 0.0)
+
+        print(f"[global_vars] Loaded track config: finish=({cx},{cy}) angle={finish_angle:.1f}°, "
+              f"waypoints={len(PATH)}, start={CUSTOM_START_POS} angle={CUSTOM_START_ANGLE:.1f}°")
+
+    except Exception as e:
+        print(f"[global_vars] Failed to load track config: {e}")
+
+
+_load_track_config()

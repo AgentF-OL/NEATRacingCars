@@ -5,13 +5,14 @@ import numpy
 from global_vars import *
 
 class AbstractCar:
+    START_ANGLE = 0
     
     def __init__(self, max_vel, rotation_vel):
         self.img = self.IMG
         self.max_vel = max_vel
         self.vel = 0
         self.rotation_vel = rotation_vel
-        self.angle = 0
+        self.angle = self.START_ANGLE
         self.x,self.y=self.START_POS
         self.acceleration=1
         ##################### Sensor creation ######################
@@ -67,7 +68,7 @@ class AbstractCar:
         
     def reset(self):
         self.x,self.y=self.START_POS
-        self.angle=0
+        self.angle=self.START_ANGLE
         self.vel=0
 
     # x,y will be the center of the car

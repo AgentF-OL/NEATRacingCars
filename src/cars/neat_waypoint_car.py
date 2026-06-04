@@ -1,6 +1,7 @@
 """NEAT waypoint-following car.
 
-FIX: não herda ComputerCar. Path manual. next_level() adicionado.
+FIX: waypoint index wraps to 0 after the last waypoint, matching DTGreenCar
+behaviour. The car never loses its target, so no circling at the finish.
 """
 import math
 import pygame
@@ -20,7 +21,8 @@ def _signed_angle_to_target(car, tx, ty):
     dot = max(-1.0, min(1.0, hx * wx + hy * wy))
     angle = math.degrees(math.acos(dot))
     cross = hx * wy - hy * wx
-    return angle if cross >= 0 else -angle
+    # pygame: y-down flips the cross-product meaning
+    return angle if cross < 0 else -angle
 
 
 def _dist_to_target(car, tx, ty):
@@ -31,8 +33,10 @@ def _curve_sharpness_at_idx(path, idx):
     n = len(path)
     if n < 3 or idx <= 0 or idx >= n - 1:
         return 0.0
-    v1x, v1y = path[idx][0] - path[idx - 1][0], path[idx][1] - path[idx - 1][1]
-    v2x, v2y = path[idx + 1][0] - path[idx][0], path[idx + 1][1] - path[idx][1]
+    v1x = path[idx][0] - path[idx - 1][0]
+    v1y = path[idx][1] - path[idx - 1][1]
+    v2x = path[idx + 1][0] - path[idx][0]
+    v2y = path[idx + 1][1] - path[idx][1]
     m1 = math.hypot(v1x, v1y) or 1e-9
     m2 = math.hypot(v2x, v2y) or 1e-9
     dot = (v1x * v2x + v1y * v2y) / (m1 * m2)
@@ -44,22 +48,9 @@ class NeatWaypointCar(NeatCar):
     START_POS = (180, 200)
 
     def __init__(self, net, max_vel=4, rotation_vel=4, path=None):
-        AbstractCar.__init__(self, max_vel, rotation_vel)
-        self.net = net
+        super().__init__(net, max_vel, rotation_vel)
         self.path = list(path) if path else list(PATH)
         self.current_point = 0
-        self.vel = 0
-        self.alive = True
-        self.off_track_frames = 0
-        self.total_off_track_frames = 0
-        self.distance_traveled = 0.0
-        self.in_track_distance = 0.0
-        self.prev_pos = (self.x, self.y)
-        self.stuck_frames = 0
-        self.frame_count = 0
-        self.finish_reached = False
-        self.waypoints_reached = 0
-        self._last_outputs = (0.0, 0.0)
 
     def reset(self):
         AbstractCar.reset(self)
@@ -73,20 +64,25 @@ class NeatWaypointCar(NeatCar):
         self.vel = self.max_vel + (level - 1) * 0.02
 
     def get_nn_inputs(self):
-        if self.current_point < len(self.path):
-            tx, ty = self.path[self.current_point]
-            dist = _dist_to_target(self, tx, ty)
-            angle = _signed_angle_to_target(self, tx, ty)
-            sharp = _curve_sharpness_at_idx(self.path, self.current_point)
-            next_sharp = 0.0
-            if self.current_point < len(self.path) - 1:
-                next_sharp = _curve_sharpness_at_idx(self.path, self.current_point + 1)
-        else:
-            fx, fy = FINISH_POSITION
-            dist = _dist_to_target(self, fx, fy)
-            angle = _signed_angle_to_target(self, fx, fy)
-            sharp = 0.0
-            next_sharp = 0.0
+        n = len(self.path)
+        if n == 0:
+            return [0.0] * 5
+
+        # ── WRAP waypoints: after the last, go back to the first ──
+        # This matches DTGreenCar behaviour and prevents the car from
+        # targeting FINISH_POSITION as a point (which caused circling).
+        idx = self.current_point % n
+        tx, ty = self.path[idx]
+
+        dist = _dist_to_target(self, tx, ty)
+        angle = _signed_angle_to_target(self, tx, ty)
+        sharp = _curve_sharpness_at_idx(self.path, idx)
+
+        # Look ahead to next waypoint (also wrapped)
+        next_sharp = 0.0
+        next_idx = (idx + 1) % n
+        if next_idx != idx:  # avoid single-waypoint path
+            next_sharp = _curve_sharpness_at_idx(self.path, next_idx)
 
         max_dist = 600.0
         return [
@@ -98,18 +94,22 @@ class NeatWaypointCar(NeatCar):
         ]
 
     def step(self, verbose=False):
-        if self.current_point < len(self.path):
-            tx, ty = self.path[self.current_point]
-            rect = pygame.Rect(self.x, self.y, self.img.get_width(), self.img.get_height())
-            if rect.collidepoint(tx, ty):
+        n = len(self.path)
+        if n > 0:
+            # ── WRAP: target waypoint index modulo path length ──
+            idx = self.current_point % n
+            tx, ty = self.path[idx]
+            cx = self.x + CAR_SIZE[0]
+            cy = self.y + CAR_SIZE[1]
+            if math.hypot(cx - tx, cy - ty) < REACH_RADIUS:
                 self.current_point += 1
                 self.waypoints_reached += 1
         super().step(verbose)
 
     def draw_points(self, win):
         for i, pt in enumerate(self.path):
-            color = (0, 200, 0) if i == self.current_point else (0, 100, 0)
-            pygame.draw.circle(win, color, pt, 6 if i == self.current_point else 4)
+            color = (0, 200, 0) if i == (self.current_point % len(self.path)) else (0, 100, 0)
+            pygame.draw.circle(win, color, pt, 6 if i == (self.current_point % len(self.path)) else 4)
 
     def draw(self, win):
         AbstractCar.draw(self, win)

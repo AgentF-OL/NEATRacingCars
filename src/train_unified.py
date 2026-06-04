@@ -15,11 +15,24 @@ import pygame
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from evaluator import eval_genomes
-from cars.neat_waypoint_car import NeatWaypointCar
-from cars.neat_radar_car import NeatRadarCar
+
+import global_vars
+from global_vars import *
+
 from generation_logger import GenerationLogger
 from analysis_utils import plot_stats, draw_net
 
+from cars.neat_waypoint_car import NeatWaypointCar
+from cars.neat_radar_car import NeatRadarCar
+
+# Apply custom start
+if hasattr(global_vars, 'CUSTOM_START_POS') and global_vars.CUSTOM_START_POS:
+    NeatWaypointCar.START_POS = global_vars.CUSTOM_START_POS
+    NeatRadarCar.START_POS = global_vars.CUSTOM_START_POS
+
+if hasattr(global_vars, 'CUSTOM_START_ANGLE'):
+    NeatWaypointCar.START_ANGLE = global_vars.CUSTOM_START_ANGLE
+    NeatRadarCar.START_ANGLE = global_vars.CUSTOM_START_ANGLE
 
 def train(strategy: str, generations: int, results_root: str = 'results'):
     results_dir = os.path.join(results_root, strategy)

@@ -23,19 +23,7 @@ class NeatRadarCar(NeatCar):
     RADAR_MAX_RANGE = 200
 
     def __init__(self, net, max_vel=4, rotation_vel=4):
-        AbstractCar.__init__(self, max_vel, rotation_vel)
-        self.net = net
-        self.vel = 0
-        self.alive = True
-        self.off_track_frames = 0
-        self.total_off_track_frames = 0
-        self.distance_traveled = 0.0
-        self.in_track_distance = 0.0
-        self.prev_pos = (self.x, self.y)
-        self.stuck_frames = 0
-        self.frame_count = 0
-        self.finish_reached = False
-        self._last_outputs = (0.0, 0.0)
+        super().__init__(net, max_vel, rotation_vel)
 
     def reset(self):
         AbstractCar.reset(self)

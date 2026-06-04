@@ -1,14 +1,7 @@
 """Demo script: load a trained winner and watch it race in pygame.
 
-Usage:
-    python src/demo_winner.py waypoints --gen 42    # best of generation 42
-    python src/demo_winner.py waypoints --final      # final best overall
-    python src/demo_winner.py radars --gen 10
-
-    Melhorias:
-  • Mostra mensagem quando o carro morre (stuck/off-track/finish).
-  • Auto-resets o carro automaticamente para continuar a demo.
-  • Não crasha com next_level faltando.
+Runs N consecutive trials and prints aggregate statistics so you can
+see the TRUE performance of the genome, not just one noisy sample.
 """
 import sys
 import os
@@ -19,13 +12,85 @@ import pygame
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+# ═════════════════════════════════════════════════════════════════
+#  1. Import global_vars FIRST to trigger config load
+#  2. Only THEN import car classes so they see the new FINISH/PATH
+# ═════════════════════════════════════════════════════════════════
+import global_vars  # noqa: F401
 from global_vars import *
 from game import GameInfo
+
+# Car classes imported AFTER global_vars has loaded config
 from cars.neat_waypoint_car import NeatWaypointCar
 from cars.neat_radar_car import NeatRadarCar
 
+# Apply custom start position / angle
+if hasattr(global_vars, 'CUSTOM_START_POS') and global_vars.CUSTOM_START_POS:
+    NeatWaypointCar.START_POS = global_vars.CUSTOM_START_POS
+    NeatRadarCar.START_POS = global_vars.CUSTOM_START_POS
 
-def main(strategy, gen=None, use_final=False, winner_path=None):
+if hasattr(global_vars, 'CUSTOM_START_ANGLE'):
+    NeatWaypointCar.START_ANGLE = global_vars.CUSTOM_START_ANGLE
+    NeatRadarCar.START_ANGLE = global_vars.CUSTOM_START_ANGLE
+
+
+def run_single_trial(strategy, net, config, verbose=False):
+    """Run one trial and return stats dict."""
+    car = NeatWaypointCar(net) if strategy == 'waypoints' else NeatRadarCar(net)
+
+    clock = pygame.time.Clock()
+    total_frames = 0
+
+    while car.alive and total_frames < 60 * 60:
+        clock.tick(FPS)
+
+        for img, pos in images:
+            WIN.blit(img, pos)
+        level_text = MAIN_FONT.render(f'Demo — {strategy}', 1, WHITE)
+        WIN.blit(level_text, (10, 10))
+        car.draw(WIN)
+
+        wp = getattr(car, 'current_point', 0)
+        total_wp = len(getattr(car, 'path', []))
+
+        if verbose:
+            status_lines = [
+                f"WP: {wp}/{total_wp}  Vel: {car.vel:.2f}  Angle: {car.angle}",
+                f"Off-track: {car.off_track_frames}f (total: {car.total_off_track_frames})",
+                f"Frames: {car.frame_count}  Alive: {car.alive}",
+            ]
+            for i, line in enumerate(status_lines):
+                surf = MAIN_FONT.render(line, 1, WHITE)
+                WIN.blit(surf, (10, 50 + i * 30))
+            pygame.display.update()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return None  # signal abort
+
+        car.step(verbose=False)
+        total_frames += 1
+
+    # Determine outcome
+    if car.finish_reached:
+        if car.total_off_track_frames == 0:
+            outcome = "VALID"
+        else:
+            outcome = f"DIRTY(off{car.total_off_track_frames})"
+    else:
+        outcome = f"DIED(wp{wp}/{total_wp})"
+
+    return {
+        'outcome': outcome,
+        'frames': total_frames,
+        'wp': wp,
+        'total_wp': total_wp,
+        'off_track': car.total_off_track_frames,
+        'finish_reached': car.finish_reached,
+    }
+
+
+def main(strategy, gen=None, use_final=False, winner_path=None, num_trials=30):
     if winner_path is None:
         results_dir = os.path.join('results', strategy)
         if use_final:
@@ -41,93 +106,76 @@ def main(strategy, gen=None, use_final=False, winner_path=None):
         sys.exit(1)
 
     config_path = os.path.join('config', f'neat_{strategy}.cfg')
-    config = neat.Config(neat.DefaultGenome,
-                         neat.DefaultReproduction,
-                         neat.DefaultSpeciesSet,
-                         neat.DefaultStagnation,
-                         config_path)
+    neat_config = neat.Config(neat.DefaultGenome,
+                              neat.DefaultReproduction,
+                              neat.DefaultSpeciesSet,
+                              neat.DefaultStagnation,
+                              config_path)
 
     with open(winner_path, 'rb') as f:
         winner = pickle.load(f)
 
-    net = neat.nn.FeedForwardNetwork.create(winner, config)
-    car = NeatWaypointCar(net) if strategy == 'waypoints' else NeatRadarCar(net)
+    net = neat.nn.FeedForwardNetwork.create(winner, neat_config)
 
-    game_info = GameInfo()
+    print(f"Running {num_trials} trials for {strategy} — genome {winner.key}")
+    print(f"Training fitness: {winner.fitness:.2f}")
+    print("Controls: Q = quit after current trial | SPACE = next trial immediately")
+    print("-" * 50)
+
+    results = []
+    trial = 0
     run = True
-    clock = pygame.time.Clock()
-    last_death_reason = ""
-    valid_finishes = 0
-    invalid_finishes = 0
-    total_runs = 0
 
-    print(f"Running demo for {strategy} — genome {winner.key} (fitness: {winner.fitness:.2f})")
-    print("Controls: SPACE = reset | Q = quit")
+    while run and trial < num_trials:
+        trial += 1
+        result = run_single_trial(strategy, net, neat_config, verbose=True)
+        if result is None:
+            break
 
-    while run:
-        clock.tick(FPS)
+        results.append(result)
+        print(f"Trial {trial:2d}: {result['outcome']:20s} "
+              f"frames={result['frames']:4d}  wp={result['wp']}/{result['total_wp']}")
 
-        for img, pos in images:
-            WIN.blit(img, pos)
-        level_text = MAIN_FONT.render(f'Demo — {strategy}', 1, WHITE)
-        WIN.blit(level_text, (10, 10))
-        car.draw(WIN)
-
-        status_lines = [
-            f"Genome: {winner.key}  Fitness: {winner.fitness:.1f}",
-            f"Vel: {car.vel:.2f}  Angle: {car.angle}  WP: {getattr(car, 'current_point', 0)}",
-            f"Off-track: {car.off_track_frames}f (total: {car.total_off_track_frames})",
-            f"Frames: {car.frame_count}  Alive: {car.alive}",
-            f"Runs: {total_runs}  Valid: {valid_finishes}  Invalid: {invalid_finishes}",
-        ]
-        if last_death_reason:
-            status_lines.append(last_death_reason)
-
-        for i, line in enumerate(status_lines):
-            color = YELLOW if i == len(status_lines) - 1 and last_death_reason else WHITE
-            surf = MAIN_FONT.render(line, 1, color)
-            WIN.blit(surf, (10, 50 + i * 30))
-
-        pygame.display.update()
-
+        # Brief pause between trials, check for quit
+        pygame.time.wait(300)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_q:
                     run = False
-                if event.key == pygame.K_SPACE:
-                    car.reset()
-                    car.reset_neat_state()
-                    last_death_reason = ""
-
-        if not car.alive:
-            total_runs += 1
-            if car.finish_reached:
-                if car.total_off_track_frames == 0:
-                    last_death_reason = "FINISH LINE REACHED — VALID!"
-                    valid_finishes += 1
-                    blit_text_center(WIN, MAIN_FONT, "VALID FINISH!")
-                else:
-                    last_death_reason = f"FINISH — INVALID (off-track {car.total_off_track_frames}f)"
-                    invalid_finishes += 1
-                    blit_text_center(WIN, MAIN_FONT, "INVALID FINISH!")
-            elif car.total_off_track_frames > 0:
-                last_death_reason = f"DIED: OFF-TRACK ({car.total_off_track_frames}f)"
-            else:
-                last_death_reason = "DIED: STUCK (no movement)"
-
-            print(f"[DEMO] {last_death_reason}")
-            pygame.display.update()
-            pygame.time.wait(1500)
-            car.reset()
-            car.reset_neat_state()
-            continue
-
-        car.step(verbose=False)
 
     pygame.quit()
-    print(f"\\nDemo stats: {total_runs} runs, {valid_finishes} valid, {invalid_finishes} invalid")
+
+    # ── Aggregate statistics ──
+    if not results:
+        return
+
+    valid = sum(1 for r in results if r['outcome'] == 'VALID')
+    dirty = sum(1 for r in results if r['outcome'].startswith('DIRTY'))
+    died = len(results) - valid - dirty
+
+    finish_times = [r['frames'] for r in results if r['finish_reached']]
+    off_tracks = [r['off_track'] for r in results if r['finish_reached']]
+
+    print("\n" + "=" * 50)
+    print("AGGREGATE RESULTS")
+    print("=" * 50)
+    print(f"Total trials: {len(results)}")
+    print(f"  VALID finishes:   {valid} ({100*valid/len(results):.1f}%)")
+    print(f"  DIRTY finishes:   {dirty} ({100*dirty/len(results):.1f}%)")
+    print(f"  Died before end:  {died} ({100*died/len(results):.1f}%)")
+    if finish_times:
+        print(f"\nFinish times (frames):")
+        print(f"  Mean: {sum(finish_times)/len(finish_times):.0f}")
+        print(f"  Min:  {min(finish_times)}")
+        print(f"  Max:  {max(finish_times)}")
+    if off_tracks:
+        print(f"\nOff-track frames (among finishers):")
+        print(f"  Mean: {sum(off_tracks)/len(off_tracks):.1f}")
+        print(f"  Min:  {min(off_tracks)}")
+        print(f"  Max:  {max(off_tracks)}")
+    print("=" * 50)
 
 
 if __name__ == '__main__':
@@ -137,5 +185,6 @@ if __name__ == '__main__':
     group.add_argument('--gen', type=int)
     group.add_argument('--final', action='store_true')
     parser.add_argument('--path', help='Direct path to a .pkl winner')
+    parser.add_argument('--trials', type=int, default=30, help='Number of demo trials')
     args = parser.parse_args()
-    main(args.strategy, args.gen, args.final, args.path)
+    main(args.strategy, args.gen, args.final, args.path, args.trials)
