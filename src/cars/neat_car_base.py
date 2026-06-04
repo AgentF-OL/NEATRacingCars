@@ -54,7 +54,7 @@ class NeatCar(AbstractCar):
         self._pos_history = []
         self._last_wp_frame = 0
         self._last_wp_count = 0
-        self._last_wp_pos = (self.x, self.y)  # ← NEW: pos when last wp was hit
+        self._last_wp_pos = (self.x, self.y)
         self._last_finish_dist = None
 
     def rotate(self, left=False, right=False):

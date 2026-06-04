@@ -1,8 +1,4 @@
-"""NEAT waypoint-following car.
-
-FIX: waypoint index wraps to 0 after the last waypoint, matching DTGreenCar
-behaviour. The car never loses its target, so no circling at the finish.
-"""
+"""NEAT waypoint-following car."""
 import math
 import pygame
 from global_vars import *
