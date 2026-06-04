@@ -1,25 +1,25 @@
 from utils import *
 
 # The grass background resized 2.5x
-GRASS = scale_image(pygame.image.load("../imgs/grass.jpg"), 2.5)
+GRASS = scale_image(pygame.image.load("imgs/grass.jpg"), 2.5)
 # The track image resized 0.9x
-TRACK = scale_image(pygame.image.load("../imgs/track.png"), 0.9)
+TRACK = scale_image(pygame.image.load("imgs/track.png"), 0.9)
 
-TRACK_MASK = scale_image(pygame.image.load("../imgs/track-mask.png"), 0.9)
+TRACK_MASK = scale_image(pygame.image.load("imgs/track-mask.png"), 0.9)
 
 # The track border image for collision detection resized 0.9x
-TRACK_BORDER = scale_image(pygame.image.load("../imgs/track-border.png"), 0.9)
+TRACK_BORDER = scale_image(pygame.image.load("imgs/track-border.png"), 0.9)
 TRACK_BORDER_MASK=pygame.mask.from_surface(TRACK_BORDER)
 
 # The finish image intact
-FINISH = pygame.image.load("../imgs/finish.png")
+FINISH = pygame.image.load("imgs/finish.png")
 FINISH_MASK=pygame.mask.from_surface(FINISH)
 
 # Import car images resized 0.55x
-RED_CAR = scale_image(pygame.image.load("../imgs/red-car.png"), 0.55)
-GREEN_CAR = scale_image(pygame.image.load("../imgs/green-car.png"), 0.55)
-GREY_CAR = scale_image(pygame.image.load("../imgs/grey-car.png"), 0.55)
-PURPLE_CAR = scale_image(pygame.image.load("../imgs/purple-car.png"), 0.55)
+RED_CAR = scale_image(pygame.image.load("imgs/red-car.png"), 0.55)
+GREEN_CAR = scale_image(pygame.image.load("imgs/green-car.png"), 0.55)
+GREY_CAR = scale_image(pygame.image.load("imgs/grey-car.png"), 0.55)
+PURPLE_CAR = scale_image(pygame.image.load("imgs/purple-car.png"), 0.55)
 
 car_width,car_height=GREEN_CAR.get_size()
 ### Half car-width and half car-height
@@ -81,3 +81,62 @@ def draw_car(car):
 def draw_images():
     for img,pos in images: WIN.blit(img,pos)
     pygame.display.update()
+
+# ═════════════════════════════════════════════════════════════════
+#  Track config auto-loader (must be at the BOTTOM of global_vars)
+# ═════════════════════════════════════════════════════════════════
+import json, os  # noqa: E402
+
+# Keep originals so we can rotate later
+FINISH_ORIGINAL = FINISH
+FINISH_MASK_ORIGINAL = FINISH_MASK
+CUSTOM_START_POS = None
+CUSTOM_START_ANGLE = 0.0
+CUSTOM_FINISH_ANGLE = 0.0
+
+
+def _load_track_config():
+    global FINISH, FINISH_MASK, FINISH_POSITION, PATH
+    global CUSTOM_START_POS, CUSTOM_START_ANGLE, CUSTOM_FINISH_ANGLE
+
+    cfg_path = "track_config.json"
+    if not os.path.exists(cfg_path):
+        return
+
+    try:
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+
+        # ── Finish line (center-based, rotate if needed) ──
+        cx, cy = cfg.get("finish_position", (FINISH_POSITION[0], FINISH_POSITION[1]))
+        finish_angle = cfg.get("finish_angle", 0.0)
+        CUSTOM_FINISH_ANGLE = finish_angle
+
+        if finish_angle != 0:
+            FINISH = pygame.transform.rotate(FINISH_ORIGINAL, finish_angle)
+            FINISH_MASK = pygame.mask.from_surface(FINISH)
+        else:
+            FINISH = FINISH_ORIGINAL
+            FINISH_MASK = FINISH_MASK_ORIGINAL
+
+        # FINISH_POSITION is kept as top-left for game compatibility
+        FINISH_POSITION = (
+            int(cx - FINISH.get_width() // 2),
+            int(cy - FINISH.get_height() // 2)
+        )
+
+        # ── Waypoints ──
+        PATH[:] = [tuple(p) for p in cfg.get("waypoints", list(PATH))]
+
+        # ── Car start ──
+        CUSTOM_START_POS = tuple(cfg.get("car_start", (180, 200)))
+        CUSTOM_START_ANGLE = cfg.get("car_angle", 0.0)
+
+        print(f"[global_vars] Loaded track config: finish=({cx},{cy}) angle={finish_angle:.1f}°, "
+              f"waypoints={len(PATH)}, start={CUSTOM_START_POS} angle={CUSTOM_START_ANGLE:.1f}°")
+
+    except Exception as e:
+        print(f"[global_vars] Failed to load track config: {e}")
+
+
+_load_track_config()
