@@ -80,13 +80,35 @@ Right on point!
 \subsection{Radars Car Inputs}
 \label{subsec:radars-car-inputs}
 
-It's off the Radar!
+The radar car neural network has $5$ input nodes, where each node corresponds to one of the radar distances from the car center.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Radars %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Radars}
 \label{sec:radars}
 
-Very well placed radars!
+The radar car has $5$ radars.
+
+Let's remember that in \texttt{pygame} the angle $0$ is at the right and the angles grow clockwise.
+
+The $5$ radars are known by their names, angles and distances from the car center: information stored in $2$ dictionaries in the RadarCar class.
+
+The radars make the shape of an arc in front of the car:
+
+\begin{table}[]
+\begin{tabular}{|l|l|}
+\hline
+\textbf{name} & \textbf{angle (degrees)} \\
+\hline
+left          & -150 \\
+left\_middle  & -120 \\
+middle        & 90   \\
+right\_middle & -60  \\
+right         & -30  \\
+\hline
+\end{tabular}
+\end{table}
+
+The distance of each radar is set to a maximum amount in the app config file by default. If the radar comes across an obstacle (in this case, the track border), it will be cut off at the obstacle, which will decrease the distance. Aditiontally, each radar includes random noise that can change its direction and distance, which is adjustable in the app config file.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Analysis %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Analysis}
@@ -122,25 +144,82 @@ Very controlled performance indeed!
 \subsection{Radars Car Analysis}
 \label{subsec:radars-car-analysis}
 
-Analysis is off the radar!
-
 %------------------------------------ Experiments -----------------------------------%
 \subsubsection{Experiments}
 \label{subsubsec:radars-experiments}
 
-So much experience!
+A simulation is run for $N$ generations, where in each generation, the total number of cars of each population race in the \texttt{pygame} track.
+
+For each step, if the car is either out of bounds, in the track border, in the grass or reaches the finish line, it is considered not alive and its execution ends.
+
+For each step of a car, its fitness is computed based on a fitness function defined in the app config file, so that its performance can be compared with the others.
+
+Sadly, the only analyzed fitness function is a very basic one based on the total distance traveled by the car, which guarantees that cars that survive for longer without hitting the track borders are considered better, and the car's corresponding neural network survives longer.
+
+No other fitness functions or parameters were tested due to time limits. The car is not always able to do the best turns due to the simplicity of this fitness function. Further investment in fitness functions is required.
+
+The winner network of the last generation is saved and can be reused in posterior runs by setting the radar car train to false in the app config file. Only the last one is saved because the best $n$ cars of each generation are always saved to the next generation.
 
 %------------------------------------ Parameters ------------------------------------%
 \subsubsection{Parameters}
 \label{subsubsec:radars-parameters}
 
-Very well-chosen parameters!
+The parameters of the radar car can be configured in the config.ini file in the neat\_cars/radars\_car directory. I will cover here the most relevant ones.
+
+The radar car has $5$ \textbf{input nodes}, $3$ \textbf{output nodes} and $0$ \textbf{hidden nodes} at the start, which are all connected at the start (\textbf{initial\_connection} is full\_direct).
+
+The input nodes are the radar distances, the output nodes are the velocity (bounded at the car's max velocity) and $2$ integer booleans that define if the car should turn left, right or keep going straight.
+
+The outputs follow a \textbf{\texttt{tanh} activation function}, meaning their values are between $-1$ and $1$. To transform these values according to the car's needs:
+\begin{itemize}
+    \item The velocity is $abs$(output) $\times$ max\_velocity so that it stays in the range [0, max\_velocity];
+    \item The turning decision is:
+    \begin{itemize}
+        \item Do not turn if both left and right are on;
+        \item Turn left if output > 0;
+        \item Turn right if output > 0;
+        \item Do not turn if both left and right are off.
+    \end{itemize}
+\end{itemize}
+
+The \textbf{number of generations} is set to $50$ just to avoid very long training sessions, but can be configured in the app config file.
+
+Still, the \textbf{fitness\_criterion} is set to $100000$ and \textbf{no\_fitness\_termination} to False to stop early in case some car of the current generation reaches that fitness value.
+
+The population (\textbf{pop\_size}) is $300$ to possibly obtain better results, but with the increasing computational cost and time.
+
+The \textbf{aggregation} of the input signals in each node is made by the sum function.
+
+The \textbf{compatibility\_threshold} is set to $3.0$ so that the cars woth similar performance are grouped together in the same species.
+
+In terms of connections and nodes:
+\begin{itemize}
+    \item \textbf{conn\_add\_prob} is $0.4$
+    \item \textbf{conn\_delete\_prob} is $0.4$
+    \item \textbf{node\_add\_prob} is $0.15$
+    \item \textbf{node\_delete\_prob} is $0.15$
+\end{itemize}
+
+In terms of species:
+\begin{itemize}
+    \item \textbf{species\_fitness\_func} uses the maximum fitness of each species to know which species to preserve;
+    \item \textbf{max\_stagnation} is $20$ so that species that do not not improve for $20$ generations are removed;
+    \item \textbf{species\_elitism} is $5$ so that the best $5$ species are not removed.
+\end{itemize}
+
+The \textbf{elitism} is set to $5$ so that the best $5$ genomes are preserved in the next generation.
+
+The car's parameters (max\_vel and rotation\_vel) are fixed at $4$.
 
 %------------------------------- Controller Performance -----------------------------%
 \subsubsection{Controller Performance}
 \label{subsubsec:radars-controller-performance}
 
-Very controlled performance indeed!
+The simulation can be watched while it happens in \texttt{pygame}, and the results of each generation can be checked in the terminal while it runs.
+
+After the testing is over, the pruned and unpruned winner neural network can be visualized in the directory set in the app config file, along with a graph with the fitness stats and the species stats along the generations.
+
+During the true race, the current velocity, acceleration, angle and fitness of the radar car can be seen in the \texttt{pygame} UI.
 
 %%%%%%%%%%%%%%%------------ Performance Comparison of the Cars --------%%%%%%%%%%%%%%%
 \subsection{Performance Comparison of the Cars}
