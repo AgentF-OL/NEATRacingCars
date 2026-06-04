@@ -42,6 +42,7 @@ MAIN_FONT = pygame.font.SysFont("comicsans", 44)
 FPS=60
 
 RED = (255, 0, 0, 255)
+GREEN = (0, 255, 0, 255)
 WHITE = (255, 255, 255, 255)
 YELLOW = (255, 255, 0, 255)
 
@@ -58,18 +59,25 @@ PATH = [
 ]
 
 
-def draw(win,images,player_car,computer_car,game_info):
-    for img,pos in images:
-        win.blit(img,pos)
+def draw(win,images,green_car,red_car,game_info):
+    for img,pos in images: win.blit(img,pos)
+
     level_text=MAIN_FONT.render(f'Level {game_info.level}',1,(255,255,255))
     win.blit(level_text,(10,HEIGHT-level_text.get_height()-90))
     
     time_text=MAIN_FONT.render(f'Time {game_info.get_level_time()}',1,(255,255,255))
     win.blit(time_text,(10,HEIGHT-time_text.get_height()-50))
     
-    velocity_text=MAIN_FONT.render(f'Vel {round(computer_car.vel,1)} px/s',1,(255,255,255))
-    win.blit(velocity_text,(10,HEIGHT-velocity_text.get_height()-10))
+    green_car.draw(win)
+    red_car.draw(win, MAIN_FONT)
     
-    player_car.draw(win)
-    computer_car.draw(win)
+    pygame.display.update()
+
+def draw_car(car):
+    for img,pos in images: WIN.blit(img,pos)
+    car.draw(WIN, MAIN_FONT)
+    pygame.display.update()
+
+def draw_images():
+    for img,pos in images: WIN.blit(img,pos)
     pygame.display.update()

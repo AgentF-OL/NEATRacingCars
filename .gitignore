@@ -1,3 +1,9 @@
+# NEAT files
+/out
+neat-checkpoint-*
+*.svg
+*.gv
+
 # LaTeX auxiliary files
 *.aux
 *.log
