@@ -92,6 +92,9 @@ class AbstractCar:
                 pygame.draw.circle(win, TRACK_MASK.get_at((int(i[0] + x), int(i[1] + y))), \
                                                           (int(i[0] + x), int(i[1] + y)), 2, 2)
                 
+    def __str__(self):
+        return f"Vel={self.vel};Acc={self.acceleration};Angle={self.angle}"
+                
 class ComputerCar(AbstractCar):
     IMG = GREEN_CAR
     START_POS = (150, 200)
