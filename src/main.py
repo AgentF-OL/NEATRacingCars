@@ -1,10 +1,13 @@
+import pickle
 import sys
 import neat
 from collections.abc import Callable
 
 import config as config
+from demo_race  import *
+
 from game import *
-from cars.waypoints_car import *
+from cars.neat_waypoint_car import *
 from cars.radars_car import *
 from neat_cars.adapter import (neat_train_radars_car, neat_load_radars_car)
 from utils import *
@@ -24,9 +27,32 @@ network_radars_car: neat.nn.FeedForwardNetwork = neat_train_or_load_model(
     config.TRAIN_RADARS_CAR
 )
 
+# ── Load NEAT configs ──
+configs = {}
+cfg_path = os.path.join("../config", f"neat_waypoints.cfg")
+if os.path.exists(cfg_path):
+    configs["waypoints"] = neat.Config(
+        neat.DefaultGenome,
+        neat.DefaultReproduction,
+        neat.DefaultSpeciesSet,
+        neat.DefaultStagnation,
+        cfg_path,
+    )
+# ── Apply track setup (finish line, waypoints, start pos/angle) ──
+apply_track_config()
+# ── Build car list ──
+car_specs = []   # list of (strategy, net, genome, label)
+cfg = configs["waypoints"]
+strategy ="waypoints"
+specs = "final"
+
+net, genome = load_winner(strategy, specs, cfg)
+label = f"{strategy[:3].upper()}-{genome.key}"
+car_specs.append((strategy, net, genome, label))
+
 pygame.init()
 
-green_car=DTGreenCar(4,4)
+green_car= NeatWaypointCar(net,4,4,)
 red_car=RadarCar(4, 4, network_radars_car)
 game_info=GameInfo()
 run=True
