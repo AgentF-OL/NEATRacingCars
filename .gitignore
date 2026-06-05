@@ -1,4 +1,5 @@
 # NEAT files
+*/results
 /out
 neat-checkpoint-*
 *.svg

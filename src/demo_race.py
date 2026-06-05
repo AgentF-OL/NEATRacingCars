@@ -34,9 +34,9 @@ from cars.neat_radar_car import NeatRadarCar
 def load_winner(strategy, spec, config):
     """spec can be: 'final', 'gen_NNN', or an absolute/relative file path."""
     if spec == "final":
-        path = os.path.join("../results", "waypoints", "winners", "winner_final.pkl")
+        path = os.path.join("results", "waypoints", "winners", "winner_final.pkl")
     elif spec.startswith("gen_"):
-        path = os.path.join("../results", strategy, "winners", f"winner_{spec}.pkl")
+        path = os.path.join("results", strategy, "winners", f"winner_{spec}.pkl")
     else:
         path = spec
 

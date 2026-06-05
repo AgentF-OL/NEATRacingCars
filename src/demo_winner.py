@@ -105,7 +105,7 @@ def main(strategy, gen=None, use_final=False, winner_path=None, num_trials=30):
         print(f"Winner not found: {winner_path}")
         sys.exit(1)
 
-    config_path = os.path.join('config', f'neat_{strategy}.cfg')
+    config_path = os.path.join('../config', f'neat_{strategy}.cfg')
     neat_config = neat.Config(neat.DefaultGenome,
                               neat.DefaultReproduction,
                               neat.DefaultSpeciesSet,
